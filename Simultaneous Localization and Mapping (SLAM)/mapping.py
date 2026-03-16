@@ -153,26 +153,39 @@ class Bot:
 
 # ──  Solution ──────────────────────────────────────────────────────────
 class Solution(Bot):
+    # ------------------------------------------------------------------
     def __init__(self):
         super().__init__()
-        self.learned_map  = []                    # list of np.ndarray (2,)
-        # Internal state exposed for visualisation
+        self.learned_map = []       
+        self.landmark_counts = []   # Track how many times a cone was observed
         self._global_meas = np.zeros((0, 2))
         self._assoc       = np.array([], dtype=int)
 
-    # ------------------------------------------------------------------
     def mapping(self, measurements):
-        """
-        Transform local measurements to world frame and accumulate unique
-        landmark estimates (distance-threshold deduplication).
-        """
         if len(measurements) == 0:
             return
+            
         gm = local_to_global(measurements, self.pos, self.heading)
+        
         for p in gm:
-            if not self.learned_map or \
-               min(np.linalg.norm(p - q) for q in self.learned_map) > 2.0:
+            if not self.learned_map:
                 self.learned_map.append(p.copy())
+                self.landmark_counts.append(1)
+                continue
+                
+            lm_array = np.array(self.learned_map)
+            dists = np.linalg.norm(lm_array - p, axis=1)
+            min_idx = np.argmin(dists)
+            
+            if dists[min_idx] < 2.0:
+                # Recursive average to refine cone position
+                cnt = self.landmark_counts[min_idx]
+                self.learned_map[min_idx] = (self.learned_map[min_idx] * cnt + p) / (cnt + 1)
+                self.landmark_counts[min_idx] += 1
+            else:
+                # New landmark discovered
+                self.learned_map.append(p.copy())
+                self.landmark_counts.append(1)
 
 # ── Problem 3 – Mapping ───────────────────────────────────────────────────────
 def make_problem3():
