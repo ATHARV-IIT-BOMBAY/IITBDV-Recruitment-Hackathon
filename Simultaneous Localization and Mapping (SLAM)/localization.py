@@ -150,17 +150,31 @@ class Solution(Bot):
 
     # ------------------------------------------------------------------
     def localization(self, velocity, steering):
-        """
-        Bicycle kinematic model (dead reckoning):
-            ẋ = v·cos(ψ)
-            ẏ = v·sin(ψ)
-            ψ̇ = (v / L)·tan(δ)
-        """
-        self.pos[0]  += velocity * np.cos(self.heading) * DT
-        self.pos[1]  += velocity * np.sin(self.heading) * DT
-        self.heading  = angle_wrap(
-            self.heading + (velocity / WHEELBASE) * np.tan(steering) * DT
-        )
+        def kinematic_derivatives(yaw, v, delta):
+            x_dot = v * np.cos(yaw)
+            y_dot = v * np.sin(yaw)
+            yaw_dot = (v / WHEELBASE) * np.tan(delta)
+            return x_dot, y_dot, yaw_dot
+
+        v, d = velocity, steering
+        yaw = self.heading
+        
+        # RK4 Integration steps
+        k1_x, k1_y, k1_yaw = kinematic_derivatives(yaw, v, d)
+        
+        yaw2 = yaw + 0.5 * DT * k1_yaw
+        k2_x, k2_y, k2_yaw = kinematic_derivatives(yaw2, v, d)
+        
+        yaw3 = yaw + 0.5 * DT * k2_yaw
+        k3_x, k3_y, k3_yaw = kinematic_derivatives(yaw3, v, d)
+        
+        yaw4 = yaw + DT * k3_yaw
+        k4_x, k4_y, k4_yaw = kinematic_derivatives(yaw4, v, d)
+
+        # Update state
+        self.pos[0] += (DT / 6.0) * (k1_x + 2*k2_x + 2*k3_x + k4_x)
+        self.pos[1] += (DT / 6.0) * (k1_y + 2*k2_y + 2*k3_y + k4_y)
+        self.heading = angle_wrap(yaw + (DT / 6.0) * (k1_yaw + 2*k2_yaw + 2*k3_yaw + k4_yaw))
 
 
 # ── Problem 2 – Localization ───────────────────────────────────────────────────
