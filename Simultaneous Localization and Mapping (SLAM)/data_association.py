@@ -1,3 +1,4 @@
+from scipy.optimize import linear_sum_assignment
 import os
 import numpy as np
 import matplotlib.pyplot as plt
@@ -162,13 +163,6 @@ class Solution(Bot):
 
     # ------------------------------------------------------------------
     def data_association(self, measurements, current_map):
-        """
-        Nearest-Neighbour data association.
-        Steps:
-          1. Transform local measurements → world frame using current pose.
-          2. For each measurement find the nearest cone in *current_map*.
-        Returns an int array of indices into current_map.
-        """
         if len(measurements) == 0 or len(current_map) == 0:
             self._global_meas = np.zeros((0, 2))
             self._assoc       = np.array([], dtype=int)
@@ -177,8 +171,23 @@ class Solution(Bot):
         gm = local_to_global(measurements, self.pos, self.heading)
         self._global_meas = gm
 
-        D           = distance.cdist(gm, current_map)
-        self._assoc = np.argmin(D, axis=1)
+        # Compute cost matrix (distances)
+        cost_matrix = distance.cdist(gm, current_map)
+        
+        # Hungarian Algorithm for optimal global 1-to-1 matching
+        row_ind, col_ind = linear_sum_assignment(cost_matrix)
+        
+        # Create association array matching the length of measurements
+        assoc = np.zeros(len(measurements), dtype=int)
+        for r, c in zip(row_ind, col_ind):
+            # Distance gating: reject absurdly far outliers (> 3.0m)
+            if cost_matrix[r, c] < 3.0:
+                assoc[r] = c
+            else:
+                # Fallback to nearest if optimal is an extreme outlier
+                assoc[r] = np.argmin(cost_matrix[r])
+                
+        self._assoc = assoc
         return self._assoc
 
 # ── Problem 1 – Data Association ──────────────────────────────────────────────
